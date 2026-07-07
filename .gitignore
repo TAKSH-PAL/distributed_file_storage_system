@@ -19,3 +19,9 @@ target/
 
 # Maven
 .mvn/wrapper/maven-wrapper.jar
+
+# TitanFS Local Storage folders
+storage/
+storage-node/storage/
+*.bin
+*.meta
