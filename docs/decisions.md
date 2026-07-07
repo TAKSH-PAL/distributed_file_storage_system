@@ -73,3 +73,28 @@ We structured the Maven configuration using a **Nested Multi-Module Parent** lay
    * **Why**: Included in `storage-node` for automatic restarts during local multi-node configuration tuning.
 3. **PostgreSQL Driver**:
    * **Why**: The metadata server links directly to a PostgreSQL database for persistent node state tracking and namespace trees.
+
+---
+
+## 5. Local Chunk Storage Architecture (Sprint 1)
+
+During Sprint 1, we implemented the raw storage capability on the `storage-node`. This implementation establishes several core patterns designed to impress technical interviewers.
+
+### A. Clean Layer Decoupling (Controller -> Service -> Filesystem)
+The node exposes a REST API via `StorageController`, which delegates all operations to `StorageService`. 
+* **Rationale**: The controller operates purely in the HTTP layer (handling multiform requests, response codes, and serialization). It has zero knowledge of where files are written on disk or how checksums are calculated. If we choose to move from local disk storage to an in-memory block store or AWS S3 block store in the future, we only need to change the service layer.
+
+### B. Pure Chunk-Based Abstraction
+* **"Everything is a Chunk"**: The service exposes generic endpoints dealing only with `chunkId` (UUID) and raw bytes. It has no knowledge of user metadata, original filenames, or directory structures.
+* **Separation of Responsibilities**: By removing the logical context of "what" a file represents from the `storage-node`, we construct a generic block-storage engine. All logical organization (such as folders, permissions, and node-to-chunk distribution) resides strictly on the `metadata-server`. This keeps storage nodes extremely simple and horizontally scalable.
+
+### C. Database-Free Node Design (Sidecar Metadata Files)
+* **Metadata Persistence**: A key principle of distributed filesystems is that storage nodes should remain lightweight and "shared-nothing". They do not require a heavy SQL database.
+* **Sidecar Pattern**: To persist chunk metadata (creation time, size, checksum) across node restarts, we store a small JSON file (`{uuid}.meta`) sidecar next to the raw block file (`{uuid}.bin`) on the local filesystem. This sidecar is serialized and deserialized using Jackson, avoiding database latency and external database dependencies for the storage node.
+
+### D. Single-Pass Streaming Checksum & Size Calculation
+* **Performance & Memory Efficiency**: When uploading a chunk, we pipe the incoming multipart input stream directly to the target output stream while simultaneously feeding it to a SHA-256 `MessageDigest` using `DigestInputStream`.
+* **Benefits**:
+  1. The file is never loaded fully into memory, preventing OutOfMemory (OOM) errors on large uploads.
+  2. The hash and size are computed in a single pass over the bytes, reducing disk read-write cycles.
+  3. The SHA-256 checksum serves as an immutable content identifier, allowing clients and nodes to verify data integrity and prevent silent disk corruption (bit-rot).
