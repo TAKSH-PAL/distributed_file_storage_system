@@ -6,28 +6,7 @@ This document describes the logical layout and write sequence flow of the TitanF
 
 ## 1. Logical Cluster Architecture
 
-```text
-                  +-----------------------+
-                  |         Client        |
-                  +-----------------------+
-                              |
-                              | REST / HTTP API
-                              v
-                  +-----------------------+
-                  |    Metadata Server    |
-                  |     (Control Plane)   |
-                  +-----------------------+
-                              |
-       +----------------------+----------------------+
-       | Bridge Network       |                      |
-       v (internal HTTP)      v                      v
-+--------------+       +--------------+       +--------------+
-| storage-node |       | storage-node |       | storage-node |
-|    (Node 1)  |       |    (Node 2)  |       |    (Node 3)  |
-+--------------+       +--------------+       +--------------+
-| Local Disk 1 |       | Local Disk 2 |       | Local Disk 3 |
-+--------------+       +--------------+       +--------------+
-```
+![Logical Cluster Architecture](images/system_architecture.png)
 
 ---
 
@@ -35,38 +14,7 @@ This document describes the logical layout and write sequence flow of the TitanF
 
 This sequence diagram details the lifecycle of a client file write. The metadata server segments the file stream on the fly and replicates the blocks across healthy storage nodes.
 
-```text
-Client          Metadata Server          PlacementService          StorageNode 1          StorageNode 2
-  |                     |                        |                       |                      |
-  |--- POST /upload --->|                        |                       |                      |
-  |    (movie.mp4)      |                        |                       |                      |
-  |                     |-- Read 1MB chunk ----->|                       |                      |
-  |                     |   from input stream    |                       |                      |
-  |                     |                        |                       |                      |
-  |                     |------- selectNodes() ->|                       |                      |
-  |                     |                        |                       |                      |
-  |                     |<-- [Node 1, Node 2] ---|                       |                      |
-  |                     |    (Based on freeSpace)|                       |                      |
-  |                     |                        |                       |                      |
-  |                     |----------------- POST /chunks?chunkId=A ------>|                      |
-  |                     |                 (Replicate Chunk 1)            |                      |
-  |                     |<---------------- ChunkMetadata response -------|                      |
-  |                     |                                                |                      |
-  |                     |--------------------------------- POST /chunks?chunkId=A ------------->|
-  |                     |                                 (Replicate Chunk 1)                   |
-  |                     |<-------------------------------- ChunkMetadata response --------------|
-  |                     |                                                |                      |
-  |                     |-- Reserve capacity locally                     |                      |
-  |                     |   for Node 1 & Node 2                          |                      |
-  |                     |                                                |                      |
-  |                     |-- Repeat for remaining chunks...               |                      |
-  |                     |                                                |                      |
-  |                     |-- Save StoredFile, FileChunk,                  |                      |
-  |                     |   and ChunkReplica mapping to DB               |                      |
-  |                     |                        |                       |                      |
-  |<- 201 Response -----|                        |                       |                      |
-  |   (Logical Map)     |                        |                       |                      |
-```
+![Upload & Replication Sequence](images/upload_sequence.png)
 
 ---
 

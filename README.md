@@ -6,21 +6,15 @@ It decouples logical filesystem structures (namespaces and paths) from raw binar
 
 ---
 
-## Architecture
+## System Architecture
 
-```text
-                  Client
-                     │
-                     ▼ (REST / HTTP)
-          Metadata Server
-        (Control Plane)
-                     │
-      ┌──────────────┼──────────────┐ (Docker bridge network)
-      ▼              ▼              ▼
-  Storage 1      Storage 2      Storage 3
-```
+![System Architecture](docs/images/system_architecture.png)
 
-For a comprehensive view of the write sequences and heartbeat loops, see [docs/architecture.md](docs/architecture.md).
+## Upload & Replication Pipeline
+
+![Upload Sequence Diagram](docs/images/upload_sequence.png)
+
+For a comprehensive view of design choices and API loops, see [docs/architecture.md](docs/architecture.md).
 
 ---
 
