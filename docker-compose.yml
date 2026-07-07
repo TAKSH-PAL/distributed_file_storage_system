@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  metadata-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.metadata
+    container_name: metadata-server
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVER_PORT=8081
+    networks:
+      - titanfs-network
+
+  storage-node-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.storage
+    container_name: storage-node-1
+    ports:
+      - "8082:8080"
+    environment:
+      - SERVER_PORT=8080
+      - TITANFS_METADATA_SERVER_URL=http://metadata-server:8081
+      - TITANFS_NODE_HOST=storage-node-1
+      - TITANFS_NODE_PORT=8080
+      - TITANFS_NODE_ID=storage-node-1
+    depends_on:
+      - metadata-server
+    volumes:
+      - storage-node-1-data:/storage
+    networks:
+      - titanfs-network
+
+  storage-node-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.storage
+    container_name: storage-node-2
+    ports:
+      - "8083:8080"
+    environment:
+      - SERVER_PORT=8080
+      - TITANFS_METADATA_SERVER_URL=http://metadata-server:8081
+      - TITANFS_NODE_HOST=storage-node-2
+      - TITANFS_NODE_PORT=8080
+      - TITANFS_NODE_ID=storage-node-2
+    depends_on:
+      - metadata-server
+    volumes:
+      - storage-node-2-data:/storage
+    networks:
+      - titanfs-network
+
+  storage-node-3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.storage
+    container_name: storage-node-3
+    ports:
+      - "8084:8080"
+    environment:
+      - SERVER_PORT=8080
+      - TITANFS_METADATA_SERVER_URL=http://metadata-server:8081
+      - TITANFS_NODE_HOST=storage-node-3
+      - TITANFS_NODE_PORT=8080
+      - TITANFS_NODE_ID=storage-node-3
+    depends_on:
+      - metadata-server
+    volumes:
+      - storage-node-3-data:/storage
+    networks:
+      - titanfs-network
+
+volumes:
+  storage-node-1-data:
+  storage-node-2-data:
+  storage-node-3-data:
+
+networks:
+  titanfs-network:
+    driver: bridge

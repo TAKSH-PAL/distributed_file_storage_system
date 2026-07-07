@@ -21,8 +21,10 @@ public class StorageController {
       }
 
       @PostMapping
-      public ResponseEntity<ChunkMetadata> uploadChunk(@RequestParam("file") MultipartFile file) {
-          ChunkMetadata metadata = storageService.store(file);
+      public ResponseEntity<ChunkMetadata> uploadChunk(
+              @RequestParam("file") MultipartFile file,
+              @RequestParam(value = "chunkId", required = false) String chunkId) {
+          ChunkMetadata metadata = storageService.store(file, chunkId);
           return ResponseEntity.ok(metadata);
       }
 

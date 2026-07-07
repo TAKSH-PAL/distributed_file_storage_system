@@ -156,58 +156,80 @@ public class NamespaceService {
 
         try (InputStream is = file.getInputStream()) {
             int bytesRead;
+            int replicationFactor = 2; // Replicate each chunk to up to 2 nodes
             while ((bytesRead = readFully(is, buffer)) > 0) {
                 byte[] chunkBytes = Arrays.copyOf(buffer, bytesRead);
                 totalSize += bytesRead;
 
-                // 1. Select storage node using PlacementService
-                StorageNode selectedNode = placementService.selectNode(activeNodes, bytesRead);
+                // 1. Select storage nodes using PlacementService
+                int actualReplication = Math.min(replicationFactor, activeNodes.size());
+                List<StorageNode> targetNodes = placementService.selectNodes(activeNodes, bytesRead, actualReplication);
 
-                // 2. Forward chunk to storage node
+                UUID chunkId = UUID.randomUUID();
                 String originalFilename = String.format("%s_chunk_%d", file.getOriginalFilename(), sequenceNumber);
-                ChunkUploadResponse uploadResponse = storageNodeClient.uploadChunk(
-                        selectedNode.getHost(),
-                        selectedNode.getPort(),
-                        chunkBytes,
-                        originalFilename
-                );
+                String checksum = null;
+                long size = 0;
+                List<StorageNode> successfulNodes = new ArrayList<>();
+
+                for (StorageNode targetNode : targetNodes) {
+                    try {
+                        ChunkUploadResponse uploadResponse = storageNodeClient.uploadChunk(
+                                targetNode.getHost(),
+                                targetNode.getPort(),
+                                chunkBytes,
+                                originalFilename,
+                                chunkId
+                        );
+                        if (checksum == null) {
+                            checksum = uploadResponse.getChecksum();
+                            size = uploadResponse.getSize();
+                        }
+                        successfulNodes.add(targetNode);
+                        targetNode.setFreeSpace(targetNode.getFreeSpace() - bytesRead);
+                    } catch (Exception e) {
+                        log.warn("Failed to upload chunk replica to node: " + targetNode.getNodeId(), e);
+                    }
+                }
+
+                if (successfulNodes.isEmpty()) {
+                    throw new RuntimeException("Failed to upload chunk to any selected storage nodes");
+                }
 
                 // 3. Create FileChunk metadata record
                 FileChunk chunk = FileChunk.builder()
-                        .chunkId(uploadResponse.getChunkId())
+                        .chunkId(chunkId)
                         .storedFile(savedFile)
                         .sequenceNumber(sequenceNumber)
-                        .size(uploadResponse.getSize())
-                        .checksum(uploadResponse.getChecksum())
+                        .size(size)
+                        .checksum(checksum)
                         .build();
 
                 FileChunk savedChunk = chunkRepository.save(chunk);
                 savedFile.getChunks().add(savedChunk);
 
-                // 4. Create ChunkReplica placement record
-                ChunkReplica replica = ChunkReplica.builder()
-                        .fileChunk(savedChunk)
-                        .storageNode(selectedNode)
-                        .build();
-                replicaRepository.save(replica);
+                // 4. Create ChunkReplica placement records for each successful storage
+                for (StorageNode successfulNode : successfulNodes) {
+                    ChunkReplica replica = ChunkReplica.builder()
+                            .fileChunk(savedChunk)
+                            .storageNode(successfulNode)
+                            .build();
+                    replicaRepository.save(replica);
+                }
 
-                // 5. Update cached node freeSpace locally for immediate next placement allocation
-                selectedNode.setFreeSpace(selectedNode.getFreeSpace() - bytesRead);
-
-                List<FileRegisterResponse.NodeInfo> targetNodes = List.of(
-                        FileRegisterResponse.NodeInfo.builder()
-                                .nodeId(selectedNode.getNodeId())
-                                .host(selectedNode.getHost())
-                                .port(selectedNode.getPort())
-                                .build()
-                );
+                List<FileRegisterResponse.NodeInfo> targetNodeInfos = successfulNodes.stream()
+                        .map(node -> FileRegisterResponse.NodeInfo.builder()
+                                .nodeId(node.getNodeId())
+                                .host(node.getHost())
+                                .port(node.getPort())
+                                .build())
+                        .collect(Collectors.toList());
 
                 allocations.add(FileRegisterResponse.ChunkAllocation.builder()
-                        .chunkId(uploadResponse.getChunkId())
+                        .chunkId(chunkId)
                         .sequenceNumber(sequenceNumber)
-                        .size(uploadResponse.getSize())
-                        .checksum(uploadResponse.getChecksum())
-                        .targetNodes(targetNodes)
+                        .size(size)
+                        .checksum(checksum)
+                        .targetNodes(targetNodeInfos)
                         .build());
 
                 sequenceNumber++;

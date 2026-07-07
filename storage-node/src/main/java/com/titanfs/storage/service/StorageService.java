@@ -46,11 +46,17 @@ public class StorageService {
     }
 
     public ChunkMetadata store(MultipartFile file) {
+        return store(file, null);
+    }
+
+    public ChunkMetadata store(MultipartFile file, String chunkIdStr) {
         if (file.isEmpty()) {
             throw new StorageException("Failed to store empty file");
         }
 
-        UUID chunkId = UUID.randomUUID();
+        UUID chunkId = (chunkIdStr != null && !chunkIdStr.trim().isEmpty())
+                ? UUID.fromString(chunkIdStr)
+                : UUID.randomUUID();
         String filename = chunkId + ".bin";
         Path targetPath = storageConfig.getRootPath().resolve(filename);
         Path metaPath = storageConfig.getRootPath().resolve(chunkId + ".meta");

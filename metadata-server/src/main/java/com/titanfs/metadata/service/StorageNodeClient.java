@@ -22,8 +22,11 @@ public class StorageNodeClient {
         this.restTemplate = new RestTemplate();
     }
 
-    public ChunkUploadResponse uploadChunk(String host, int port, byte[] chunkBytes, String originalFilename) {
+    public ChunkUploadResponse uploadChunk(String host, int port, byte[] chunkBytes, String originalFilename, java.util.UUID chunkId) {
         String url = String.format("http://%s:%d/chunks", host, port);
+        if (chunkId != null) {
+            url += "?chunkId=" + chunkId;
+        }
         log.info("Forwarding chunk upload to storage node: {}", url);
 
         HttpHeaders headers = new HttpHeaders();

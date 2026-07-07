@@ -21,4 +21,24 @@ public class LoadBalancedPlacementService implements PlacementService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Insufficient storage space: No online storage node has " + chunkSize + " bytes of free space."));
     }
+
+    @Override
+    public List<StorageNode> selectNodes(List<StorageNode> activeNodes, long chunkSize, int replicationFactor) {
+        if (activeNodes == null || activeNodes.isEmpty()) {
+            throw new IllegalArgumentException("Active nodes list cannot be empty");
+        }
+
+        List<StorageNode> selected = activeNodes.stream()
+                .filter(node -> node.getFreeSpace() >= chunkSize)
+                .sorted(Comparator.comparingLong(StorageNode::getFreeSpace).reversed())
+                .limit(replicationFactor)
+                .collect(java.util.stream.Collectors.toList());
+
+        if (selected.isEmpty()) {
+            throw new IllegalStateException(
+                    "Insufficient storage space: No online storage node has " + chunkSize + " bytes of free space.");
+        }
+
+        return selected;
+    }
 }

@@ -149,3 +149,22 @@ classDiagram
 ### C. Zero-Configuration Local Development Profile (H2 / PostgreSQL)
 * **Dev/Prod Profile Decoupling**: To make the project instantly testable without setting up local databases, the default profile uses an in-memory **H2 Database**.
 * **PostgreSQL Support**: A staging profile (`postgres`) is configured in `application-postgres.properties` targeting actual PostgreSQL servers, ready for production docker-compose deployments.
+
+---
+
+## 7. Storage Node Telemetry & Gateway-Based Chunking Uploads (Sprint 3)
+
+In Sprint 3, we implemented dynamic storage telemetry and a streaming, load-balanced upload gateway.
+
+### A. Dynamic Storage Node Telemetry (`GET /chunks/info`)
+Instead of hardcoding storage limits, the `storage-node` now exposes a `GET /chunks/info` API endpoint.
+* **FS-Level Inspection**: The storage node programmatically calls `Files.getFileStore().getUsableSpace()` to inspect current system-level free capacity in real time. It also filters and counts the number of existing `.bin` binary chunk files inside its configured local storage directory.
+* **Interview Rationale**: This dynamically aligns node reports with physical operating system storage, allowing metadata-servers to monitor health metrics directly from raw system-level variables.
+
+### B. Gateway-Based Streaming Chunking vs. Client-Direct Uploads
+When clients write files to TitanFS, the control plane acts as a dynamic streaming gateway (`POST /files/upload`).
+* **Streaming Chunks**: The `metadata-server` reads the file stream from the HTTP request body and buffers it into 1MB blocks on the fly, calculating chunk checksums and size. It immediately routes and pipes these blocks to the storage nodes using a custom REST client, maintaining a low memory footprint (only 1MB buffered in memory).
+* **Load-Balanced Node Selection (`PlacementService`)**: Chunk nodes are selected based on capacity (`freeSpace` telemetry). The scheduler dynamically targets active nodes with the most free space.
+* **Immediate Local Resource Reservation**: To prevent race conditions where subsequent chunks of the same file are allocated to the same node before heartbeats update capacity, the `metadata-server` immediately deducts chunk sizes from its local cache of active nodes' free space.
+* **Separation of Concerns**: Storing files at the gateway shields the client from chunking, hashing, and concurrent socket uploads, keeping clients lightweight while maximizing control plane governance over block layouts.
+
