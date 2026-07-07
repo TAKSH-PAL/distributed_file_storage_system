@@ -34,46 +34,49 @@ public class NodeRegistryService {
             node = existing.get();
             node.setHost(request.getHost());
             node.setPort(request.getPort());
+            node.setFreeSpace(request.getFreeSpace());
             node.setLastHeartbeat(Instant.now());
             node.setStatus("ACTIVE");
-            log.info("Storage node re-registered: id={}, host={}, port={}", node.getNodeId(), node.getHost(), node.getPort());
+            log.info("Storage node re-registered: id={}, host={}, port={}, freeSpace={}", node.getNodeId(), node.getHost(), node.getPort(), node.getFreeSpace());
         } else {
             node = StorageNode.builder()
                     .nodeId(request.getNodeId())
                     .host(request.getHost())
                     .port(request.getPort())
+                    .freeSpace(request.getFreeSpace())
                     .lastHeartbeat(Instant.now())
                     .status("ACTIVE")
                     .build();
-            log.info("New storage node registered: id={}, host={}, port={}", node.getNodeId(), node.getHost(), node.getPort());
+            log.info("New storage node registered: id={}, host={}, port={}, freeSpace={}", node.getNodeId(), node.getHost(), node.getPort(), node.getFreeSpace());
         }
         return nodeRepository.save(node);
     }
 
     @Transactional
-    public void handleHeartbeat(String nodeId) {
+    public void handleHeartbeat(String nodeId, long freeSpace) {
         StorageNode node = nodeRepository.findById(nodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not registered: " + nodeId));
         node.setLastHeartbeat(Instant.now());
+        node.setFreeSpace(freeSpace);
         node.setStatus("ACTIVE");
-        log.debug("Heartbeat received from node: {}", nodeId);
+        log.debug("Heartbeat received from node: {}, freeSpace={}", nodeId, freeSpace);
         nodeRepository.save(node);
     }
 
     @Transactional(readOnly = true)
     public List<StorageNode> getActiveNodes() {
-        Instant threshold = Instant.now().minus(30, ChronoUnit.SECONDS);
+        Instant threshold = Instant.now().minus(300, ChronoUnit.SECONDS);
         return nodeRepository.findByStatus("ACTIVE").stream()
                 .filter(node -> node.getLastHeartbeat().isAfter(threshold))
                 .collect(Collectors.toList());
     }
 
-    // Mark nodes as INACTIVE if they haven't sent a heartbeat in over 30 seconds.
+    // Mark nodes as INACTIVE if they haven't sent a heartbeat in over 300 seconds.
     // Runs every 10 seconds.
     @Scheduled(fixedRate = 10000)
     @Transactional
     public void checkNodeHealth() {
-        Instant threshold = Instant.now().minus(30, ChronoUnit.SECONDS);
+        Instant threshold = Instant.now().minus(300, ChronoUnit.SECONDS);
         List<StorageNode> activeNodes = nodeRepository.findByStatus("ACTIVE");
         for (StorageNode node : activeNodes) {
             if (node.getLastHeartbeat().isBefore(threshold)) {

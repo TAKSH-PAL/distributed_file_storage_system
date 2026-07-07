@@ -22,6 +22,7 @@ public class StorageNode {
     private String nodeId;
     private String host;
     private int port;
+    private long freeSpace;
     private Instant lastHeartbeat;
     private String status; // ACTIVE, INACTIVE
 }

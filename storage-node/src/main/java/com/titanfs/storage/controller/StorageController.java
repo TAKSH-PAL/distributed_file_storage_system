@@ -1,6 +1,7 @@
 package com.titanfs.storage.controller;
 
 import com.titanfs.storage.model.ChunkMetadata;
+import com.titanfs.storage.model.NodeInfoResponse;
 import com.titanfs.storage.service.StorageService;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -44,5 +45,10 @@ public class StorageController {
       public ResponseEntity<Void> deleteChunk(@PathVariable("chunkId") String chunkId) {
           storageService.delete(chunkId);
           return ResponseEntity.noContent().build();
+      }
+
+      @GetMapping("/info")
+      public ResponseEntity<NodeInfoResponse> getNodeInfo() {
+          return ResponseEntity.ok(storageService.getNodeInfo());
       }
 }

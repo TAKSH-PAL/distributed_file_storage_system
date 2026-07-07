@@ -5,6 +5,7 @@ import com.titanfs.storage.config.StorageConfig;
 import com.titanfs.storage.exception.ChunkNotFoundException;
 import com.titanfs.storage.exception.StorageException;
 import com.titanfs.storage.model.ChunkMetadata;
+import com.titanfs.storage.model.NodeInfoResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -158,6 +159,34 @@ public class StorageService {
         } catch (IOException e) {
             throw new StorageException("Failed to read chunk metadata for ID: " + chunkId, e);
         }
+    }
+
+    public NodeInfoResponse getNodeInfo() {
+        Path rootPath = storageConfig.getRootPath();
+        long freeSpace = 0;
+        long chunksCount = 0;
+
+        try {
+            freeSpace = Files.getFileStore(rootPath).getUsableSpace();
+        } catch (IOException e) {
+            log.error("Failed to read free space for path: " + rootPath, e);
+            freeSpace = -1;
+        }
+
+        try (java.util.stream.Stream<Path> filesStream = Files.list(rootPath)) {
+            chunksCount = filesStream
+                    .filter(path -> path.toString().endsWith(".bin"))
+                    .count();
+        } catch (IOException e) {
+            log.error("Failed to list chunks in path: " + rootPath, e);
+        }
+
+        return NodeInfoResponse.builder()
+                .nodeId(nodeId)
+                .freeSpace(freeSpace)
+                .chunks(chunksCount)
+                .status("UP")
+                .build();
     }
 
     private UUID parseUUID(String chunkIdStr) {

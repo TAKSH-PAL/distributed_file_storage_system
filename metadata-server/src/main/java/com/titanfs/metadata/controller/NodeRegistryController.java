@@ -25,9 +25,11 @@ public class NodeRegistryController {
     }
 
     @PostMapping("/{nodeId}/heartbeat")
-    public ResponseEntity<Void> heartbeat(@PathVariable("nodeId") String nodeId) {
+    public ResponseEntity<Void> heartbeat(
+            @PathVariable("nodeId") String nodeId,
+            @RequestParam(value = "freeSpace", defaultValue = "0") long freeSpace) {
         try {
-            nodeRegistryService.handleHeartbeat(nodeId);
+            nodeRegistryService.handleHeartbeat(nodeId, freeSpace);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();

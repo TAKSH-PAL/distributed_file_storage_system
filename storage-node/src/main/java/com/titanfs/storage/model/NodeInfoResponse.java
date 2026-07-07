@@ -1,17 +1,17 @@
-package com.titanfs.metadata.dto;
+package com.titanfs.storage.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-@Data
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class NodeRegisterRequest {
+public class NodeInfoResponse {
     private String nodeId;
-    private String host;
-    private int port;
     private long freeSpace;
+    private long chunks;
+    private String status;
 }
