@@ -5,7 +5,9 @@ import com.titanfs.storage.config.StorageConfig;
 import com.titanfs.storage.exception.ChunkNotFoundException;
 import com.titanfs.storage.exception.StorageException;
 import com.titanfs.storage.model.ChunkMetadata;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
@@ -24,16 +26,22 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.UUID;
 
+@Slf4j
 @Service
 public class StorageService {
 
     private final StorageConfig storageConfig;
     private final ObjectMapper objectMapper;
+    private final String nodeId;
 
     @Autowired
-    public StorageService(StorageConfig storageConfig, ObjectMapper objectMapper) {
+    public StorageService(
+            StorageConfig storageConfig,
+            ObjectMapper objectMapper,
+            @Value("${titanfs.node.id:storage-node-default}") String nodeId) {
         this.storageConfig = storageConfig;
         this.objectMapper = objectMapper;
+        this.nodeId = nodeId;
     }
 
     public ChunkMetadata store(MultipartFile file) {
@@ -67,15 +75,16 @@ public class StorageService {
 
             ChunkMetadata metadata = ChunkMetadata.builder()
                     .chunkId(chunkId)
+                    .storageNodeId(nodeId)
                     .size(size)
                     .checksum(checksum)
                     .createdAt(createdAt)
-                    .path(targetPath.toString())
                     .build();
 
             // Persist metadata to sidecar JSON file
             objectMapper.writeValue(metaPath.toFile(), metadata);
 
+            log.info("Successfully stored chunk: id={}, size={}, checksum={}", chunkId, size, checksum);
             return metadata;
 
         } catch (NoSuchAlgorithmException e) {
@@ -90,21 +99,18 @@ public class StorageService {
         }
     }
 
-    public Resource read(String chunkId) {
-        try {
-            UUID.fromString(chunkId); // Validate UUID format
-        } catch (IllegalArgumentException e) {
-            throw new ChunkNotFoundException("Invalid chunk ID format: " + chunkId);
-        }
-
+    public Resource read(String chunkIdStr) {
+        UUID chunkId = parseUUID(chunkIdStr);
         Path file = storageConfig.getRootPath().resolve(chunkId + ".bin");
         if (!Files.exists(file)) {
+            log.warn("Chunk data not found: id={}", chunkId);
             throw new ChunkNotFoundException("Chunk data not found for ID: " + chunkId);
         }
 
         try {
             Resource resource = new UrlResource(file.toUri());
             if (resource.exists() || resource.isReadable()) {
+                log.info("Successfully read chunk: id={}", chunkId);
                 return resource;
             } else {
                 throw new StorageException("Could not read chunk file: " + chunkId);
@@ -112,15 +118,10 @@ public class StorageService {
         } catch (MalformedURLException e) {
             throw new StorageException("Malformed URL for chunk: " + chunkId, e);
         }
-    }
+  }
 
-    public void delete(String chunkId) {
-        try {
-            UUID.fromString(chunkId); // Validate UUID format
-        } catch (IllegalArgumentException e) {
-            throw new ChunkNotFoundException("Invalid chunk ID format: " + chunkId);
-        }
-
+    public void delete(String chunkIdStr) {
+        UUID chunkId = parseUUID(chunkIdStr);
         Path targetPath = storageConfig.getRootPath().resolve(chunkId + ".bin");
         Path metaPath = storageConfig.getRootPath().resolve(chunkId + ".meta");
 
@@ -135,26 +136,36 @@ public class StorageService {
         }
 
         if (!dataDeleted && !metaDeleted) {
+            log.warn("Chunk to delete not found: id={}", chunkId);
             throw new ChunkNotFoundException("Chunk not found for ID: " + chunkId);
         }
+
+        log.info("Successfully deleted chunk: id={}", chunkId);
     }
 
-    public ChunkMetadata getMetadata(String chunkId) {
-        try {
-            UUID.fromString(chunkId); // Validate UUID format
-        } catch (IllegalArgumentException e) {
-            throw new ChunkNotFoundException("Invalid chunk ID format: " + chunkId);
-        }
-
+    public ChunkMetadata getMetadata(String chunkIdStr) {
+        UUID chunkId = parseUUID(chunkIdStr);
         Path metaPath = storageConfig.getRootPath().resolve(chunkId + ".meta");
         if (!Files.exists(metaPath)) {
+            log.warn("Chunk metadata not found: id={}", chunkId);
             throw new ChunkNotFoundException("Chunk metadata not found for ID: " + chunkId);
         }
 
         try {
-            return objectMapper.readValue(metaPath.toFile(), ChunkMetadata.class);
+            ChunkMetadata metadata = objectMapper.readValue(metaPath.toFile(), ChunkMetadata.class);
+            log.info("Successfully retrieved metadata for chunk: id={}", chunkId);
+            return metadata;
         } catch (IOException e) {
             throw new StorageException("Failed to read chunk metadata for ID: " + chunkId, e);
+        }
+    }
+
+    private UUID parseUUID(String chunkIdStr) {
+        try {
+            return UUID.fromString(chunkIdStr);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid chunk ID format: '{}'", chunkIdStr);
+            throw new ChunkNotFoundException("Invalid chunk ID format: " + chunkIdStr);
         }
     }
 }

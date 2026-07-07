@@ -98,3 +98,54 @@ The node exposes a REST API via `StorageController`, which delegates all operati
   1. The file is never loaded fully into memory, preventing OutOfMemory (OOM) errors on large uploads.
   2. The hash and size are computed in a single pass over the bytes, reducing disk read-write cycles.
   3. The SHA-256 checksum serves as an immutable content identifier, allowing clients and nodes to verify data integrity and prevent silent disk corruption (bit-rot).
+
+---
+
+## 6. Control Plane: Metadata Server & Namespace Registry (Sprint 2)
+
+With Sprint 2, we transitioned TitanFS into a true distributed storage system by introducing the `metadata-server` control plane.
+
+### A. Logical Directory Namespace Representation
+Instead of storage nodes keeping track of file paths, the `metadata-server` maintains a single consistent relational mapping:
+* **`StoredFile`**: Holds the virtual file path (e.g. `/docs/resume.pdf`), total logical file size, and creation details.
+* **`FileChunk`**: Resolves how a file is chunked into logical blocks, preserving sequence order (`sequenceNumber`), expected chunk sizes, and verifying SHA-256 checksums.
+* **`ChunkReplica`**: Maps a single chunk to the specific storage node(s) holding the data.
+
+```mermaid
+classDiagram
+    class StoredFile {
+        +UUID fileId
+        +String filePath
+        +long totalSize
+        +Instant createdAt
+    }
+    class FileChunk {
+        +UUID chunkId
+        +int sequenceNumber
+        +long size
+        +String checksum
+    }
+    class StorageNode {
+        +String nodeId
+        +String host
+        +int port
+        +Instant lastHeartbeat
+        +String status
+    }
+    class ChunkReplica {
+        +Long id
+    }
+    StoredFile "1" --> "*" FileChunk : has
+    FileChunk "1" --> "*" ChunkReplica : locations
+    StorageNode "1" --> "*" ChunkReplica : hosts
+```
+
+### B. Storage Node Registry & Heartbeat Monitor
+* **Dynamic Node Registration**: Storage nodes register their host/port mappings at startup using `/nodes/register`.
+* **State & Heartbeat Tracking**: Nodes send periodic heartbeat requests to `/nodes/{nodeId}/heartbeat`.
+* **Active Node Sweeper**: The metadata server runs a background task using Spring's `@Scheduled` annotation every 10 seconds to detect dead nodes. If a node fails to report within 30 seconds, its status is updated to `INACTIVE`.
+* **Interviewer Takeaway**: This heartbeat pattern demonstrates real-time distributed consensus and failure detection capabilities. It ensures chunks are never allocated to offline nodes.
+
+### C. Zero-Configuration Local Development Profile (H2 / PostgreSQL)
+* **Dev/Prod Profile Decoupling**: To make the project instantly testable without setting up local databases, the default profile uses an in-memory **H2 Database**.
+* **PostgreSQL Support**: A staging profile (`postgres`) is configured in `application-postgres.properties` targeting actual PostgreSQL servers, ready for production docker-compose deployments.
